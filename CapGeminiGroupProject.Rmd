@@ -1,0 +1,334 @@
+---
+title: "CapGeminiProj"
+date: "December 3, 2016"
+output: html_document
+---
+
+```{r Read Data}
+ESP.df<- read.csv('final.esp.csv')
+head(ESP.df)
+```
+
+omitting NAs
+
+```{r Omitting NAs/Fixing Time Format}
+summary(ESP.df)
+sum(is.na(ESP.df))
+#which(is.na(ESP.df))
+
+ESP.df <- na.omit(ESP.df)  #removed NA rows
+sum(is.na(ESP.df))
+
+str(ESP.df)
+
+#change data types for date.install and time
+ESP.df[, "date.install"] <- as.Date(ESP.df[, "date.install"], format = "%m/%d/%Y")
+str(ESP.df[, "date.install"])
+
+library(lubridate)
+ESP.df[, "time"] <- as.character.Date(ESP.df[, "time"], format = "%H:%M:%S") #, format = "%H:%M:%S"
+str(ESP.df[, "time"])
+
+ESP.df <- ESP.df[, c("esp.sr.no",  "vendor", "depth", "perf", "date.install", "water.cut", "daily.flow", "num.work.orders", "avg.uptime", "avg.maintenance.cost.monthly", "daily.production.variance", "Ti.C","time", "Pi.Psia", "Vx.g", "Vy.g", "Tm.C", "MOR.Ohm", "Lv.V", "status")]
+
+colnames(ESP.df)
+
+
+```
+
+## 
+
+Splitting data by vendors
+
+```{r Data Manipulation}
+library(dplyr)
+ESP.V1 <- filter(ESP.df, vendor == 'Vendor 1')
+ESP.V2 <- filter(ESP.df, vendor == 'Vendor 2')
+ESP.V3 <- filter(ESP.df, vendor == 'Vendor 3')
+
+#Replacing Warning with Down
+ESP.V1.df <- ESP.V1
+ESP.V1.df[ESP.V1.df$status == "Warning", "status"] <- "Down"
+ESP.V1.df[,"status"] <- factor(ESP.V1.df[,"status"])
+proper.time.df <- paste("2016-05-05", ESP.V1.df$time, sep = ' ')
+proper.time.df <- as_datetime(proper.time.df)
+ESP.V1.df <- mutate(ESP.V1.df, proper.time = proper.time.df)
+
+ESP.V2.df <- ESP.V2
+ESP.V2.df[ESP.V2.df$status == "Warning", "status"] <- "Down"
+ESP.V2.df[,"status"] <- factor(ESP.V2.df[,"status"])
+proper.time.df <- paste("2016-05-05", ESP.V2.df$time, sep = ' ')
+proper.time.df <- as_datetime(proper.time.df)
+ESP.V2.df <- mutate(ESP.V2.df, proper.time = proper.time.df)
+
+ESP.V3.df <- ESP.V3
+ESP.V3.df[ESP.V3.df$status == "Warning", "status"] <- "Down"
+ESP.V3.df[,"status"] <- factor(ESP.V3.df[,"status"])
+proper.time.df <- paste("2016-05-05", ESP.V3.df$time, sep = ' ')
+proper.time.df <- as_datetime(proper.time.df)
+ESP.V3.df <- mutate(ESP.V3.df, proper.time = proper.time.df)
+
+```
+
+
+Logistic Regression Analysis
+
+```{r Logistic Regression Analysis}
+plot(ESP.V1.df[,c(3,6,7,19)])
+plot(ESP.V1.df[,c(8,9,10,19)])
+plot(ESP.V1.df[,c(12,14,15,19)])
+plot(ESP.V1.df[,c(16,17,18,19)])
+
+library('foreign')
+library('MASS')
+library('Hmisc')
+library('reshape2')
+
+
+#-------Vendor 1-------
+#Prediction is successful, there are rows that are predicted as down and as running
+kTraining.size <- .7
+set.seed(1)
+training.rows <- sample(1:nrow(ESP.V1.df), as.integer(kTraining.size*nrow(ESP.V1.df)))
+
+lr.model.1 <- glm(formula = status~Pi.Psia+Vx.g+Vy.g+Tm.C+Lv.V, data = ESP.V1.df[training.rows,], family=binomial)
+
+summary(lr.model.1)
+contrasts(ESP.V1.df$status)
+
+lr.model.predict.1 <- predict(lr.model.1, ESP.V1.df[-training.rows,], type="response")
+
+sum(ifelse(predict(lr.model.1, ESP.V1.df[-training.rows,], type = "response") > .5, 'Running', 'Down') == ESP.V1.df[-training.rows,'status'])
+
+which(ifelse(predict(lr.model.1, ESP.V1.df[-training.rows,], type = "response") > .5, 'Running', 'Down') == "Down")
+
+
+#-------Vendor 2-------
+#the last line of code recognized that no "down" was predicted indicating a failed model
+kTraining.size <- .7
+set.seed(1)
+training.rows <- sample(1:nrow(ESP.V2.df), as.integer(kTraining.size*nrow(ESP.V2.df)))
+
+lr.model.2 <- glm(formula = status~Pi.Psia+Vx.g+Vy.g+Tm.C+Lv.V, data = ESP.V2.df[training.rows,], family=binomial)
+
+summary(lr.model.2)
+contrasts(ESP.V2.df$status)
+
+lr.model.predict.2 <- predict(lr.model.2, ESP.V2.df[-training.rows,], type="response")
+
+sum(ifelse(predict(lr.model.2, ESP.V2.df[-training.rows,], type = "response") > .5, 'Running', 'Down') == ESP.V2.df[-training.rows,'status'])
+
+which(ifelse(predict(lr.model.2, ESP.V2.df[-training.rows,], type = "response") > .5, 'Running', 'Down') == "Down")
+
+
+#-------Vendor 3-------
+#the last line of code recognized that no "down" was predicted indicating a failed model
+kTraining.size <- .7
+set.seed(1)
+training.rows <- sample(1:nrow(ESP.V3.df), as.integer(kTraining.size*nrow(ESP.V3.df)))
+
+lr.model.3 <- glm(formula = status~Ti.C+Pi.Psia+Vx.g+Tm.C+MOR.Ohm+Lv.V, data = ESP.V3.df[training.rows,], family=binomial)
+
+summary(lr.model.3)
+contrasts(ESP.V3.df$status)
+
+lr.model.predict.3 <- predict(lr.model.3, ESP.V3.df[-training.rows,], type="response")
+
+sum(ifelse(predict(lr.model.3, ESP.V3.df[-training.rows,], type = "response") > .5, 'Running', 'Down') == ESP.V3.df[-training.rows,'status'])
+
+which(ifelse(predict(lr.model.3, ESP.V3.df[-training.rows,], type = "response") > .5, 'Running', 'Down') == "Down")
+
+
+```
+
+
+Tree Diagram
+
+```{r Tree Diagram}
+#-------Vendor 1-------
+#vendor 1 decision tree showed us that Vy.g is significant for determining whether the pump is running or not. A Vy.g < 32.1847 most likely means that a pump will be running, and Vy.g > 32.1847 is where the majority of the problems occur. 
+
+library(class)
+kTrainingSize <- .7
+set.seed(1)
+training.rows <- sample(1: nrow(ESP.V1.df), as.integer(kTrainingSize * nrow(ESP.V1.df))) 
+
+library(tree)
+decision.tree.results.1 <- tree(status ~ Ti.C + Pi.Psia + Vx.g + Vy.g + Tm.C + MOR.Ohm + Lv.V, data=ESP.V1.df[training.rows,])  
+
+plot(decision.tree.results.1); text(decision.tree.results.1)
+#decision.tree.results
+summary(decision.tree.results.1)
+
+#making predictions for the test data based on decision tree results
+decision.tree.predictions.1 <- predict(decision.tree.results.1, ESP.V1.df[-training.rows,], type = 'class') 
+mean(decision.tree.predictions.1 == ESP.V1.df[-training.rows,'status'])
+
+#-------Vendor 2--------
+#Vendor 2 lack of tree indicates that all prediction results in "running" due to lack of correlation
+kTrainingSize <- .7
+set.seed(1)
+training.rows <- sample(1: nrow(ESP.V2.df), as.integer(kTrainingSize * nrow(ESP.V2.df))) 
+
+library(tree)
+decision.tree.results.2 <- tree(status ~ Ti.C + Pi.Psia + Vx.g + Vy.g + Tm.C + MOR.Ohm + Lv.V, data=ESP.V2.df[training.rows,])  
+
+plot(decision.tree.results.2); text(decision.tree.results.2)
+#decision.tree.results
+summary(decision.tree.results.2)
+
+#making predictions for the test data based on decision tree results
+decision.tree.predictions.2 <- predict(decision.tree.results.2, ESP.V2.df[-training.rows,], type = 'class') 
+mean(decision.tree.predictions.2 == ESP.V2.df[-training.rows,'status'])
+
+#-------Vendor 3--------
+#Vendor 3 lack of tree indicates that all prediction results in "running" due to lack of correlation
+kTrainingSize <- .7
+set.seed(1)
+training.rows <- sample(1: nrow(ESP.V3.df), as.integer(kTrainingSize * nrow(ESP.V3.df))) 
+
+library(tree)
+decision.tree.results.3 <- tree(status ~ Ti.C + Pi.Psia + Vx.g + Vy.g + Tm.C + MOR.Ohm + Lv.V, data=ESP.V3.df[training.rows,])  
+
+plot(decision.tree.results.3); text(decision.tree.results.3)
+#decision.tree.results
+summary(decision.tree.results.3)
+
+#making predictions for the test data based on decision tree results
+decision.tree.predictions.3 <- predict(decision.tree.results.3, ESP.V3.df[-training.rows,], type = 'class') 
+mean(decision.tree.predictions.3 == ESP.V3.df[-training.rows,'status'])
+```
+
+Graphs
+
+```{r Data Visualization}
+#messing around with visualizations
+library(ggplot2)
+library(scales)
+library(plotly)
+
+#-------Vendor 1--------
+#Density Plot for the Two Primary Variables: Vx.g and Vy.g
+esp.plot <- ggplot(data = ESP.V1, aes( x = Vx.g, fill = status))  
+esp.plot +  geom_density(adjust = .5, alpha = .5)  
+
+esp.plot <- ggplot(data = ESP.V1, aes( x = Vy.g, fill = status))  
+esp.plot +  geom_density(adjust = .5, alpha = .5)  
+#+ geom_line()
+
+#Scatter Plot for Each Variable for Data Visualization
+pScatter <- ggplot(data = ESP.V1.df, aes(x = proper.time, y = Ti.C, color = status)) + layer(geom = "point", stat = "identity", position = "identity") + scale_x_datetime(name = "Time", breaks = date_breaks("4 hours"), date_labels = "%H:%M:%S") 
+pScatter
+ggplotly() #converts plot into an interactive json format- good for exploring the data
+
+pScatter <- ggplot(data = ESP.V1.df, aes(x = proper.time, y = Pi.Psia, color = status)) + layer(geom = "point", stat = "identity", position = "identity") + scale_x_datetime(name = "Time", breaks = date_breaks("4 hours"), date_labels = "%H:%M:%S") 
+pScatter
+ggplotly()
+
+pScatter <- ggplot(data = ESP.V1.df, aes(x = proper.time, y = Vx.g, color = status)) + layer(geom = "point", stat = "identity", position = "identity") + scale_x_datetime(name = "Time", breaks = date_breaks("4 hours"), date_labels = "%H:%M:%S") 
+pScatter
+ggplotly()
+
+pScatter <- ggplot(data = ESP.V1.df, aes(x = proper.time, y = Vy.g, color = status)) + layer(geom = "point", stat = "identity", position = "identity") + scale_x_datetime(name = "Time", breaks = date_breaks("4 hours"), date_labels = "%H:%M:%S") 
+pScatter
+ggplotly()
+
+pScatter <- ggplot(data = ESP.V1.df, aes(x = proper.time, y = Tm.C, color = status)) + layer(geom = "point", stat = "identity", position = "identity") + scale_x_datetime(name = "Time", breaks = date_breaks("4 hours"), date_labels = "%H:%M:%S") 
+pScatter
+ggplotly()
+
+pScatter <- ggplot(data = ESP.V1.df, aes(x = proper.time, y = MOR.Ohm, color = status)) + layer(geom = "point", stat = "identity", position = "identity") + scale_x_datetime(name = "Time", breaks = date_breaks("4 hours"), date_labels = "%H:%M:%S") 
+pScatter
+ggplotly()
+
+pScatter <- ggplot(data = ESP.V1.df, aes(x = proper.time, y = Lv.V, color = status)) + layer(geom = "point", stat = "identity", position = "identity") + scale_x_datetime(name = "Time", breaks = date_breaks("4 hours"), date_labels = "%H:%M:%S") 
+pScatter
+ggplotly()
+
+#-------Vendor 2--------
+#Density Plot for the Two Primary Variables: Vx.g and Vy.g
+esp.plot <- ggplot(data = ESP.V2, aes( x = Vx.g, fill = status))  
+esp.plot +  geom_density(adjust = .5, alpha = .5)
+
+esp.plot <- ggplot(data = ESP.V2, aes( x = Vy.g, fill = status))  
+esp.plot +  geom_density(adjust = .5, alpha = .5)  
+#+ geom_line()
+
+#Scatter Plot for Each Variable for Data Visualization
+pScatter <- ggplot(data = ESP.V2.df, aes(x = proper.time, y = Ti.C, color = status)) + layer(geom = "point", stat = "identity", position = "identity") + scale_x_datetime(name = "Time", breaks = date_breaks("4 hours"), date_labels = "%H:%M:%S") 
+pScatter
+ggplotly() #converts plot into an interactive json format- good for exploring the data
+
+pScatter <- ggplot(data = ESP.V2.df, aes(x = proper.time, y = Pi.Psia, color = status)) + layer(geom = "point", stat = "identity", position = "identity") + scale_x_datetime(name = "Time", breaks = date_breaks("4 hours"), date_labels = "%H:%M:%S") 
+pScatter
+ggplotly()
+
+pScatter <- ggplot(data = ESP.V2.df, aes(x = proper.time, y = Vx.g, color = status)) + layer(geom = "point", stat = "identity", position = "identity") + scale_x_datetime(name = "Time", breaks = date_breaks("4 hours"), date_labels = "%H:%M:%S") 
+pScatter
+ggplotly()
+
+pScatter <- ggplot(data = ESP.V2.df, aes(x = proper.time, y = Vy.g, color = status)) + layer(geom = "point", stat = "identity", position = "identity") + scale_x_datetime(name = "Time", breaks = date_breaks("4 hours"), date_labels = "%H:%M:%S") 
+pScatter
+ggplotly()
+
+pScatter <- ggplot(data = ESP.V2.df, aes(x = proper.time, y = Tm.C, color = status)) + layer(geom = "point", stat = "identity", position = "identity") + scale_x_datetime(name = "Time", breaks = date_breaks("4 hours"), date_labels = "%H:%M:%S") 
+pScatter
+ggplotly()
+
+pScatter <- ggplot(data = ESP.V2.df, aes(x = proper.time, y = MOR.Ohm, color = status)) + layer(geom = "point", stat = "identity", position = "identity") + scale_x_datetime(name = "Time", breaks = date_breaks("4 hours"), date_labels = "%H:%M:%S") 
+pScatter
+ggplotly()
+
+pScatter <- ggplot(data = ESP.V2.df, aes(x = proper.time, y = Lv.V, color = status)) + layer(geom = "point", stat = "identity", position = "identity") + scale_x_datetime(name = "Time", breaks = date_breaks("4 hours"), date_labels = "%H:%M:%S") 
+pScatter
+ggplotly()
+
+
+#-------Vendor 3--------
+#Density Plot for the Two Primary Variables: Vx.g and Vy.g
+esp.plot <- ggplot(data = ESP.V3, aes( x = Vx.g, fill = status))  
+esp.plot +  geom_density(adjust = .5, alpha = .5)  
+
+esp.plot <- ggplot(data = ESP.V3, aes( x = Vy.g, fill = status))  
+esp.plot +  geom_density(adjust = .5, alpha = .5)  
+#+ geom_line()
+
+#Scatter Plot for Each Variable for Data Visualization
+pScatter <- ggplot(data = ESP.V3.df, aes(x = proper.time, y = Ti.C, color = status)) + layer(geom = "point", stat = "identity", position = "identity") + scale_x_datetime(name = "Time", breaks = date_breaks("4 hours"), date_labels = "%H:%M:%S") 
+pScatter
+ggplotly() #converts plot into an interactive json format- good for exploring the data
+
+pScatter <- ggplot(data = ESP.V3.df, aes(x = proper.time, y = Pi.Psia, color = status)) + layer(geom = "point", stat = "identity", position = "identity") + scale_x_datetime(name = "Time", breaks = date_breaks("4 hours"), date_labels = "%H:%M:%S") 
+pScatter
+ggplotly()
+
+pScatter <- ggplot(data = ESP.V3.df, aes(x = proper.time, y = Vx.g, color = status)) + layer(geom = "point", stat = "identity", position = "identity") + scale_x_datetime(name = "Time", breaks = date_breaks("4 hours"), date_labels = "%H:%M:%S") 
+pScatter
+ggplotly()
+
+pScatter <- ggplot(data = ESP.V3.df, aes(x = proper.time, y = Vy.g, color = status)) + layer(geom = "point", stat = "identity", position = "identity") + scale_x_datetime(name = "Time", breaks = date_breaks("4 hours"), date_labels = "%H:%M:%S") 
+pScatter
+ggplotly()
+
+pScatter <- ggplot(data = ESP.V3.df, aes(x = proper.time, y = Tm.C, color = status)) + layer(geom = "point", stat = "identity", position = "identity") + scale_x_datetime(name = "Time", breaks = date_breaks("4 hours"), date_labels = "%H:%M:%S") 
+pScatter
+ggplotly()
+
+pScatter <- ggplot(data = ESP.V3.df, aes(x = proper.time, y = MOR.Ohm, color = status)) + layer(geom = "point", stat = "identity", position = "identity") + scale_x_datetime(name = "Time", breaks = date_breaks("4 hours"), date_labels = "%H:%M:%S") 
+pScatter
+ggplotly()
+
+pScatter <- ggplot(data = ESP.V3.df, aes(x = proper.time, y = Lv.V, color = status)) + layer(geom = "point", stat = "identity", position = "identity") + scale_x_datetime(name = "Time", breaks = date_breaks("4 hours"), date_labels = "%H:%M:%S") 
+pScatter
+ggplotly()
+
+
+
+
+
+
+```
+
+
+
+
